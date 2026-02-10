@@ -5,63 +5,31 @@
 # url: https://github.com/JesusBYS/discourse-string-replacer
 
 after_initialize do
-  module ::PrewriteStringReplacer
-    def self.apply(str)
-      return str if str.blank?
+  module ::StringReplacerExtension
+    def self.apply_replacements(post)
+      return if post.raw.blank?
 
-      # 1) literal sequence "\u003e" -> ">"
-      out = str.gsub('\\u003e', '>')
+      # On stocke le texte original pour comparer
+      original_raw = post.raw.dup
 
-      # 2) jesusbys (any case) -> JesusBYS
-      # out = out.gsub(/jesusbys/i, 'JesusBYS')
+      # Remplacements
+      post.raw.gsub!("\u003e", ">")
+      post.raw.gsub!("&gt;", ">")
+      # post.raw.gsub!(/jesusbys/i, "JesusBYS")
 
-      out
+      # Si on a modifié le texte et que le post est déjà enregistré (ex: traduction),
+      # on s'assure que le champ "cooked" sera régénéré.
+      if post.raw != original_raw && post.persisted?
+        post.cooked = nil 
+      end
     end
   end
 
-  # --- Posts: create + edit (before DB write) ---
-  Post.class_eval do
+  class ::Post
+    # before_validation est déclenché par PostCreator, PostRevisor 
+    # et les services de traduction de Discourse AI
     before_validation do
-      next unless SiteSetting.prewrite_string_replacer_enabled
-      self.raw = ::PrewriteStringReplacer.apply(self.raw)
-    end
-  end
-
-  # --- PostRevisions: if raw is stored there too (depending on flows) ---
-  if defined?(PostRevision)
-    PostRevision.class_eval do
-      before_validation do
-        next unless SiteSetting.prewrite_string_replacer_enabled
-        if self.modifications.is_a?(Hash)
-          # Sometimes "raw" is inside modifications
-          if self.modifications["raw"].is_a?(Array) && self.modifications["raw"][1].is_a?(String)
-            self.modifications["raw"][1] = ::PrewriteStringReplacer.apply(self.modifications["raw"][1])
-          end
-        end
-      end
-    end
-  end
-
-  # --- Translations stored as custom fields (common pattern for translators/AI features) ---
-  # We apply to ANY custom field value that is a String AND looks like translation-related,
-  # so translations created/updated by AI also get normalized before DB write.
-  if defined?(PostCustomField)
-    PostCustomField.class_eval do
-      before_validation do
-        next unless SiteSetting.prewrite_string_replacer_enabled
-        next unless self.value.is_a?(String)
-
-        name = self.name.to_s
-        looks_like_translation =
-          name.include?("translation") ||
-          name.include?("translated") ||
-          name.include?("ai_") ||
-          name.include?("llm")
-
-        next unless looks_like_translation
-
-        self.value = ::PrewriteStringReplacer.apply(self.value)
-      end
+      StringReplacerExtension.apply_replacements(self)
     end
   end
 end
