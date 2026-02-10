@@ -1,26 +1,36 @@
 # name: discourse-string-replacer
-# about: Replace strings by another.
-# version: 0.1
+# about: Remplace littéralement \u003e par > dans tous les posts (Humain, API, IA)
+# version: 0.4
 # authors: JesusBYS
 # url: https://github.com/JesusBYS/discourse-string-replacer
 
 after_initialize do
-  reloadable_patch do |plugin|
-    Post.class_eval do
-      before_save :sanitize_custom_strings
+  
+  # 1. Méthode de nettoyage universelle
+  def fix_unicode_greater_than(post)
+    return if post.raw.blank?
 
-      def sanitize_custom_strings
-        return if self.raw.blank?
-        return unless raw_changed?
-
-        # On essaie de capturer la chaîne littérale ET le caractère échappé
-        # On utilise une syntaxe plus robuste pour Ruby
-        self.raw.gsub!(/\\u003e/i, '>')
-        self.raw.gsub!("\u003e", '>')
-
-        # \b garantit que l'on ne remplace que le mot entier
-        self.raw.gsub!(/\bjesusbys\b/i, 'JesusBYS')
-      end
+    # On cible la chaîne littérale \u003e
+    if post.raw.include?('\u003e') || post.raw.include?('\\u003e')
+      new_raw = post.raw.gsub(/\\u003e/i, '>')
+      
+      # Mise à jour silencieuse en BDD pour éviter les boucles infinies de hooks
+      post.update_columns(raw: new_raw)
+      
+      # On force la régénération du HTML pour que l'affichage change immédiatement
+      post.rebake!
     end
   end
+
+  # 2. Hook avant sauvegarde (Standard)
+  on(:post_created) do |post|
+    fix_unicode_greater_than(post)
+  end
+
+  # 3. Hook après modification (IA / Traductions / Éditions)
+  # post_processed est déclenché quand le HTML est prêt, c'est le moment idéal pour corriger
+  on(:post_processed) do |post|
+    fix_unicode_greater_than(post)
+  end
+
 end
