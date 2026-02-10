@@ -16,8 +16,8 @@ after_initialize do
         # Remplacement de \u003e par >
         self.raw.gsub!(/\\u003e/i, '>')
 
-        # Remplacement de jesusbys (insensible à la casse) par JesusBYS
-        self.raw.gsub!(/jesusbys/i, 'JesusBYS')
+        # \b garantit que l'on ne remplace que le mot entier
+        # self.raw.gsub!(/\bjesusbys\b/i, 'JesusBYS')
       end
     end
   end
