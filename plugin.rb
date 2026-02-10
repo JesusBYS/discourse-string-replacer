@@ -1,8 +1,8 @@
 # name: discourse-string-replacer
 # about: Remplace "\u003e" et "jesusbys" par leurs versions corrigées avant sauvegarde.
 # version: 0.1
-# authors: VotreNom
-# url: https://github.com/VOTRE_NOM_UTILISATEUR/discourse-string-replacer
+# authors: JesusBYS
+# url: https://github.com/JesusBYS/discourse-string-replacer
 
 after_initialize do
   reloadable_patch do |plugin|
