@@ -13,11 +13,13 @@ after_initialize do
         return if self.raw.blank?
         return unless raw_changed?
 
-        # Remplacement de \u003e par >
+        # On essaie de capturer la chaîne littérale ET le caractère échappé
+        # On utilise une syntaxe plus robuste pour Ruby
         self.raw.gsub!(/\\u003e/i, '>')
+        self.raw.gsub!("\u003e", '>')
 
         # \b garantit que l'on ne remplace que le mot entier
-        # self.raw.gsub!(/\bjesusbys\b/i, 'JesusBYS')
+        self.raw.gsub!(/\bjesusbys\b/i, 'JesusBYS')
       end
     end
   end
