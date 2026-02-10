@@ -5,32 +5,63 @@
 # url: https://github.com/JesusBYS/discourse-string-replacer
 
 after_initialize do
-  
-  # 1. Méthode de nettoyage universelle
-  def fix_unicode_greater_than(post)
-    return if post.raw.blank?
+  module ::PrewriteStringReplacer
+    def self.apply(str)
+      return str if str.blank?
 
-    # On cible la chaîne littérale \u003e
-    if post.raw.include?('\u003e') || post.raw.include?('\\u003e')
-      new_raw = post.raw.gsub(/\\u003e/i, '>')
-      
-      # Mise à jour silencieuse en BDD pour éviter les boucles infinies de hooks
-      post.update_columns(raw: new_raw)
-      
-      # On force la régénération du HTML pour que l'affichage change immédiatement
-      post.rebake!
+      # 1) literal sequence "\u003e" -> ">"
+      out = str.gsub('\\u003e', '>')
+
+      # 2) jesusbys (any case) -> JesusBYS
+      # out = out.gsub(/jesusbys/i, 'JesusBYS')
+
+      out
     end
   end
 
-  # 2. Hook avant sauvegarde (Standard)
-  on(:post_created) do |post|
-    fix_unicode_greater_than(post)
+  # --- Posts: create + edit (before DB write) ---
+  Post.class_eval do
+    before_validation do
+      next unless SiteSetting.prewrite_string_replacer_enabled
+      self.raw = ::PrewriteStringReplacer.apply(self.raw)
+    end
   end
 
-  # 3. Hook après modification (IA / Traductions / Éditions)
-  # post_processed est déclenché quand le HTML est prêt, c'est le moment idéal pour corriger
-  on(:post_processed) do |post|
-    fix_unicode_greater_than(post)
+  # --- PostRevisions: if raw is stored there too (depending on flows) ---
+  if defined?(PostRevision)
+    PostRevision.class_eval do
+      before_validation do
+        next unless SiteSetting.prewrite_string_replacer_enabled
+        if self.modifications.is_a?(Hash)
+          # Sometimes "raw" is inside modifications
+          if self.modifications["raw"].is_a?(Array) && self.modifications["raw"][1].is_a?(String)
+            self.modifications["raw"][1] = ::PrewriteStringReplacer.apply(self.modifications["raw"][1])
+          end
+        end
+      end
+    end
   end
 
+  # --- Translations stored as custom fields (common pattern for translators/AI features) ---
+  # We apply to ANY custom field value that is a String AND looks like translation-related,
+  # so translations created/updated by AI also get normalized before DB write.
+  if defined?(PostCustomField)
+    PostCustomField.class_eval do
+      before_validation do
+        next unless SiteSetting.prewrite_string_replacer_enabled
+        next unless self.value.is_a?(String)
+
+        name = self.name.to_s
+        looks_like_translation =
+          name.include?("translation") ||
+          name.include?("translated") ||
+          name.include?("ai_") ||
+          name.include?("llm")
+
+        next unless looks_like_translation
+
+        self.value = ::PrewriteStringReplacer.apply(self.value)
+      end
+    end
+  end
 end
